@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>RawBox</title>
+<style>
+:root{--bg:#eef2f6;--s:#fff;--ink:#14202b;--mut:#5b6b7a;--line:#d3dbe4;--ac:#2f5bff;--aci:#fff;--dg:#c0392b;--rb:#f7f9fb;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1720;--s:#17212c;--ink:#e6edf4;--mut:#8ea0b2;--line:#2a3846;--ac:#7c9cff;--aci:#0f1720;--dg:#ff7b6b;--rb:#111b25}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Noto Sans Thai","Segoe UI",sans-serif}
+main{max-width:720px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:26px;margin:8px 0 4px}h2{font-size:17px;margin:28px 0 8px}
+.sub{color:var(--mut);margin:0 0 20px}
+.box{background:var(--s);border:1px solid var(--line);border-radius:10px;padding:14px}
+label{display:block;font-weight:600;font-size:14px;margin:12px 0 6px}label:first-child{margin-top:0}
+input,textarea{width:100%;font:inherit;color:var(--ink);background:var(--rb);border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+textarea{min-height:160px;resize:vertical;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px}
+button,a.btn{font:inherit;font-weight:600;border-radius:6px;padding:8px 14px;border:1px solid var(--line);background:var(--s);color:var(--ink);cursor:pointer;text-decoration:none;display:inline-block}
+.pri{background:var(--ac);border-color:var(--ac);color:var(--aci)}.dg{color:var(--dg)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.item{background:var(--s);border:1px solid var(--line);border-left:4px solid var(--ac);border-radius:6px;padding:12px 14px;margin-bottom:10px}
+.item p{margin:0}.url{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:var(--mut);word-break:break-all;margin-top:4px!important}
+.err{color:var(--dg);font-weight:600}.ok{color:var(--ac);font-weight:600}
+[hidden]{display:none!important}
+</style>
+</head>
+<body><main>
+<h1>RawBox</h1>
+
+<section id="login">
+  <p class="sub">เข้าสู่ระบบเพื่อจัดการลิงก์ Raw</p>
+  <form class="box" id="lf">
+    <label for="pw">รหัสผ่าน</label>
+    <input id="pw" type="password" required autofocus>
+    <p class="err" id="le" hidden></p>
+    <div class="row"><button class="pri">เข้าสู่ระบบ</button></div>
+  </form>
+</section>
+
+<section id="admin" hidden>
+  <p class="sub">สร้างลิงก์ Raw ของคุณเอง ลิงก์ที่ได้ตอบกลับเป็นข้อความล้วน ใช้กับ HttpGet ได้</p>
+  <p id="msg" hidden></p>
+  <form class="box" id="sf">
+    <label for="t">ชื่อรายการ</label>
+    <input id="t" maxlength="120">
+    <div id="idw">
+      <label for="i">ชื่อลิงก์ (ไม่บังคับ ถ้าเว้นว่างจะสุ่มให้)</label>
+      <input id="i" maxlength="40" placeholder="เช่น myscript">
+    </div>
+    <label for="c">เนื้อหา</label>
+    <textarea id="c" required></textarea>
+    <div class="row">
+      <button class="pri" id="sb">สร้างลิงก์</button>
+      <button type="button" id="cancel" hidden>ยกเลิก</button>
+    </div>
+  </form>
+  <h2 id="lh">รายการทั้งหมด</h2>
+  <div id="list"></div>
+  <div class="row"><button id="logout">ออกจากระบบ</button></div>
+</section>
+</main>
+
+<script>
+var $=function(id){return document.getElementById(id)};
+var pw=sessionStorage.getItem("rb-pw")||"", editingId=null;
+
+function api(path,body){
+  var o={headers:{"x-admin-password":pw}};
+  if(body){o.method="POST";o.body=JSON.stringify(body);o.headers["content-type"]="application/json"}
+  return fetch(path,o).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||"เกิดข้อผิดพลาด");return d})});
+}
+function flash(t,bad){var m=$("msg");m.textContent=t;m.className=bad?"err":"ok";m.hidden=false;if(!bad)setTimeout(function(){m.hidden=true},1800)}
+function show(on){$("login").hidden=on;$("admin").hidden=!on}
+
+function resetForm(){editingId=null;$("t").value="";$("i").value="";$("c").value="";$("idw").hidden=false;$("sb").textContent="สร้างลิงก์";$("cancel").hidden=true}
+
+function load(){
+  return api("/api/list").then(function(meta){
+    show(true);
+    var ids=Object.keys(meta).sort(function(a,b){return (meta[b].ts||0)-(meta[a].ts||0)});
+    $("lh").textContent="รายการทั้งหมด ("+ids.length+")";
+    var box=$("list");box.textContent="";
+    if(!ids.length){var e=document.createElement("p");e.className="sub";e.textContent="ยังไม่มีรายการ";box.appendChild(e)}
+    ids.forEach(function(id){
+      var url=location.origin+"/raw/"+id;
+      var d=document.createElement("div");d.className="item";
+      var t=document.createElement("p");var s=document.createElement("strong");s.textContent=meta[id].title;t.appendChild(s);
+      var u=document.createElement("p");u.className="url";u.textContent=url;
+      var r=document.createElement("div");r.className="row";
+      function btn(txt,cls,fn){var b=document.createElement("button");b.textContent=txt;if(cls)b.className=cls;b.onclick=fn;r.appendChild(b);return b}
+      btn("คัดลอกลิงก์","pri",function(){var b=this;navigator.clipboard.writeText(url).then(function(){b.textContent="คัดลอกแล้ว";setTimeout(function(){b.textContent="คัดลอกลิงก์"},1200)})});
+      var a=document.createElement("a");a.className="btn";a.href=url;a.target="_blank";a.rel="noopener";a.textContent="เปิด Raw";r.appendChild(a);
+      btn("แก้ไข","",function(){
+        api("/api/get?id="+encodeURIComponent(id)).then(function(x){
+          editingId=id;$("t").value=x.title;$("c").value=x.content;$("idw").hidden=true;
+          $("sb").textContent="บันทึกการแก้ไข";$("cancel").hidden=false;window.scrollTo(0,0);
+        }).catch(function(e){flash(e.message,true)});
+      });
+      btn("ลบ","dg",function(){
+        if(!confirm("ลบรายการนี้?"))return;
+        api("/api/delete",{id:id}).then(function(){flash("ลบแล้ว");load()}).catch(function(e){flash(e.message,true)});
+      });
+      d.appendChild(t);d.appendChild(u);d.appendChild(r);box.appendChild(d);
+    });
+  });
+}
+
+$("lf").onsubmit=function(e){
+  e.preventDefault();pw=$("pw").value;
+  load().then(function(){sessionStorage.setItem("rb-pw",pw);$("le").hidden=true}).catch(function(err){
+    pw="";$("le").textContent=err.message;$("le").hidden=false;
+  });
+};
+$("sf").onsubmit=function(e){
+  e.preventDefault();
+  api("/api/save",{id:editingId||$("i").value,editing:!!editingId,title:$("t").value,content:$("c").value})
+    .then(function(){flash("บันทึกแล้ว");resetForm();load()})
+    .catch(function(err){flash(err.message,true)});
+};
+$("cancel").onclick=resetForm;
+$("logout").onclick=function(){sessionStorage.removeItem("rb-pw");pw="";show(false);$("pw").value=""};
+
+if(pw){load().catch(function(){sessionStorage.removeItem("rb-pw");pw="";show(false)})}
+</script>
+</body>
+</html>
