@@ -8,7 +8,7 @@ const validId = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(i
 const randId = () => Math.random().toString(36).slice(2, 10);
 
 function authed(req) {
-  const pw = process.env.ADMIN_PASSWORD || "251800";
+  const pw = process.env.ADMIN_PASSWORD || "";
   const given = req.headers.get("x-admin-password") || "";
   const a = Buffer.from(pw), b = Buffer.from(given);
   return pw.length > 0 && a.length === b.length && timingSafeEqual(a, b);
